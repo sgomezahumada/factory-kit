@@ -19,7 +19,7 @@ jobs:
       # macOS: stock bash 3.2 and no coreutils on purpose, like a participant's laptop.
       - name: shellcheck
         run: |
-          (cd kit && shellcheck -x factory.sh doctor.sh)
+          (cd kit && shellcheck -x factory.sh doctor.sh lib/telemetry.sh)
           shellcheck sync.sh tests/stubs/*
           (cd scripts && shellcheck -x check-problem-repo.sh)
       - name: tests

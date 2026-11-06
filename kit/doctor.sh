@@ -159,8 +159,16 @@ check_gates
 check_time_limit
 check_behind
 
+# Tells the workshop dashboard this laptop is ready. Silent and in the background: it never changes
+# doctor's output or exit code, and does nothing unless FACTORY_TELEMETRY_URL is set.
+say_hello() {
+  [[ -n "${FACTORY_TELEMETRY_URL:-}" && -f lib/telemetry.sh ]] || return 0
+  (bash lib/telemetry.sh hello >/dev/null 2>&1 </dev/null &) >/dev/null 2>&1 || true
+}
+
 if [[ "$FIXES" -eq 0 ]]; then
   echo "doctor: all green"
+  say_hello
   exit 0
 fi
 echo "doctor: $FIXES thing(s) to fix, then run ./doctor.sh again"

@@ -12,6 +12,7 @@ Lo que lee el tablero de la sala: `docs/run-contract.md` (pásaselo a quien cons
 | Ruta | Qué es |
 |---|---|
 | `kit/factory.sh`, `kit/lib/` | el motor: cuatro sesiones nuevas de `claude -p`, archivos de contrato, scope, gates, PR desde el fork |
+| `kit/lib/telemetry.sh` | cliente de telemetría para el tablero de la sala (copia de `client/telemetry.sh` de Emer-42/demo-factory-dashboard); apagado salvo que `FACTORY_TELEMETRY_URL` esté definida, ver `docs/run-contract.md` |
 | `kit/doctor.sh` | revisa la laptop y el fork del participante; cada fallo trae su arreglo |
 | `kit/prompts/` | los prompts por defecto de las cuatro fases |
 | `kit/dashboard/` | el panel local (de demo-factory), con gates y PRs en borrador |
@@ -30,7 +31,7 @@ corridas por participante cuestan alrededor de $1.50.
 ```zsh
 python3.12 -m venv venv && venv/bin/pip install -r requirements.txt shellcheck-py
 venv/bin/pytest -q
-(cd kit && ../venv/bin/shellcheck -x factory.sh doctor.sh) && venv/bin/shellcheck sync.sh tests/stubs/*
+(cd kit && ../venv/bin/shellcheck -x factory.sh doctor.sh lib/telemetry.sh) && venv/bin/shellcheck sync.sh tests/stubs/*
 ```
 
 CI corre lo mismo en Ubuntu y en macOS (bash 3.2 de serie, sin coreutils, como la laptop de un participante).

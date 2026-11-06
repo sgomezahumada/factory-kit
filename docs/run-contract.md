@@ -101,8 +101,11 @@ Preflight passed. `upstream` is the workshop repo.
 
 ### `phase_end`
 
+`turns`, `cost_usd` (USD, as reported by Claude Code) and `seconds` (rounded from the result's
+`duration_ms`) are for that phase alone, not the run so far.
+
 ```jsonl
-{"ts":1793992330,"event":"phase_end","phase":"2"}
+{"ts":1793992330,"event":"phase_end","phase":"2","turns":"14","cost_usd":"0.1832","seconds":"28"}
 ```
 
 ### `scope`
@@ -131,16 +134,46 @@ One per participant gate that ran (in name order, stopping at the first failure)
 
 `result` is `pr` (approved and pushed), `rejected` (a draft PR when pushed; local only in a rehearsal)
 or `committed` (approved in a rehearsal, `FACTORY_NO_PUSH=1`). `url` only when a PR was opened.
+`tier` and `model` are the same values as in the run marker.
 
 ```jsonl
-{"ts":1793992362,"event":"finish","result":"rejected","url":"https://github.com/workshop/leaderboard-api/pull/7","verdict":"REJECT","stopped_by":"gate:no-deps.sh","turns":"22","cost":"0.29"}
+{"ts":1793992362,"event":"finish","result":"rejected","url":"https://github.com/workshop/leaderboard-api/pull/7","verdict":"REJECT","stopped_by":"gate:no-deps.sh","turns":"22","cost":"0.29","model":"claude-sonnet-5-5","tier":"2"}
 ```
 
 ### `fail`
 
 The run stopped without a verdict (crash, timeout, turn limit, missing contract file, preflight).
-`phase` is empty before phase 1.
+`phase` is empty before phase 1. `model` and `tier` are there when the run already knew them: `model`
+once `factory.conf` is read, `tier` once preflight passed. A `fail` earlier than that omits them.
 
 ```jsonl
-{"ts":1793992340,"event":"fail","phase":"2","reason":"phase 2 did not finish cleanly, e.g. hit the turn limit (raw log: .factory/logs/phase2.jsonl)"}
+{"ts":1793992340,"event":"fail","phase":"2","reason":"phase 2 did not finish cleanly, e.g. hit the turn limit (raw log: .factory/logs/phase2.jsonl)","model":"claude-sonnet-5-5","tier":"1"}
 ```
+
+## 4. Telemetry (optional)
+
+The factory can also send its events to the workshop dashboard. It is off unless
+`FACTORY_TELEMETRY_URL` is set; with it unset nothing happens (no files, no network).
+
+| Variable | Meaning |
+|---|---|
+| `FACTORY_TELEMETRY_URL` | base URL of the dashboard API; unset = telemetry off |
+| `FACTORY_TELEMETRY_TOKEN` | ingest bearer token, sent as `Authorization: Bearer …` |
+| `FACTORY_WORKSHOP` | workshop id (default `default`) |
+
+`lib/telemetry.sh` is a copy of `client/telemetry.sh` from Emer-42/demo-factory-dashboard; its README
+lists the rest of its variables. Every event in section 3 is sent with a random run id, a sequence
+number, the participant's GitHub login (or `anon-xxxxxx`) and the OS. Each event is also appended to
+`.factory/logs/telemetry.jsonl`.
+
+- **Sent:** the event name and the fields of section 3 on an allowlist: issue number, ticket title,
+  branch, upstream, phase number and name, changed file paths, gate name and result, verdict,
+  `stopped_by`, tier, model, turns, cost, seconds, PR URL and the failure reason.
+- **Not sent:** prompts, code or diffs, transcripts, agent output, review text, tool lists,
+  environment variables. Anything off the allowlist is dropped before it is written or sent.
+- **Fail-open:** delivery is a detached background `curl` with short timeouts and errors ignored.
+  An unset, unreachable or rejecting endpoint never fails a run, changes its exit code or its
+  `events.jsonl`, or makes it wait.
+
+`./doctor.sh` sends one `hello` when it ends all green (same rules: silent, background, only with the URL set).
+To check the connection by hand: `bash lib/telemetry.sh hello`.

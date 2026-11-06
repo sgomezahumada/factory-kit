@@ -33,6 +33,9 @@ BRANCH=""
 STOPPED_BY=""
 TOTAL_TURNS=0
 TOTAL_COST=0
+PHASE_TURNS=0
+PHASE_COST=0
+PHASE_SECONDS=0
 
 # Appended to every prompt: chained commands are checked part by part and get denied.
 SHELL_RULE="Run exactly one shell command per Bash call, with no ;, &&, || or pipes. Use the Read tool to read files."
@@ -88,6 +91,7 @@ preflight() {
     ! branch_taken "$BRANCH" || die "branch $BRANCH already exists; wait a second and run again"
   fi
   FACTORY_BASE="$(git rev-parse HEAD)"
+  RUN_TIER="$(compute_tier)"
   emit preflight ok=true title="$ISSUE_TITLE" branch="$BRANCH" upstream="$UPSTREAM"
 }
 
@@ -122,11 +126,13 @@ timeout_cmd() {  # prints the timeout wrapper for this machine, if any
   if command -v gtimeout >/dev/null; then echo gtimeout; elif command -v timeout >/dev/null; then echo timeout; fi
 }
 
-add_totals() {  # add a phase's turns and cost from its result line
+add_totals() {  # add a phase's turns and cost from its result line; leaves that phase's own in PHASE_*
   local turns cost
   turns="$(jq -rs '[.[] | select(.type == "result")] | last | .num_turns // 0' "$1")"
   cost="$(jq -rs '[.[] | select(.type == "result")] | last | .total_cost_usd // 0' "$1")"
   TOTAL_TURNS=$((TOTAL_TURNS + turns))
+  PHASE_TURNS="$turns" PHASE_COST="$cost"
+  PHASE_SECONDS="$(jq -rs '[.[] | select(.type == "result")] | last | ((.duration_ms // 0) / 1000 | round)' "$1")"
   TOTAL_COST="$(jq -n --argjson a "$TOTAL_COST" --argjson b "$cost" '(($a + $b) * 10000 | round) / 10000')"
 }
 
@@ -160,7 +166,7 @@ run_phase() {
   [[ "$status" -eq 0 && -n "$subtype" ]] || die "phase $num crashed or timed out (raw log: $log)"
   [[ -s "$out" ]] || die "phase $num did not write $out, stopping before the next phase builds on nothing"
   add_totals "$log"
-  emit phase_end phase="$num"
+  emit phase_end phase="$num" turns="$PHASE_TURNS" cost_usd="$PHASE_COST" seconds="$PHASE_SECONDS"
   CURRENT_PHASE=""
 }
 
@@ -248,6 +254,7 @@ mkdir -p .factory/logs
 # Run files never dirty the repo, whatever its .gitignore says (a "*" file ignores itself too).
 [[ -e .factory/.gitignore ]] || printf '*\n' >.factory/.gitignore
 install_traps
+telemetry_init .factory/logs
 emit run_start issue="$ISSUE"
 preflight
 git checkout -q -b "$BRANCH"

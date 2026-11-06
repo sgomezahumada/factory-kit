@@ -35,6 +35,7 @@ def test_sync_installs_engine_and_default_prompts(target: Path, stub_env: dict[s
         "doctor.sh",
         "lib/conf.sh",
         "lib/gates.sh",
+        "lib/telemetry.sh",
         "prompts/4-review.md",
         "dashboard/server.py",
     ):

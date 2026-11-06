@@ -6,10 +6,15 @@ Nothing here spends tokens or touches GitHub: the remotes are local bare repos a
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+import threading
+import time
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -96,3 +101,82 @@ def run_factory(repo: Path, env: dict[str, str], *args: str) -> subprocess.Compl
     return subprocess.run(
         ["bash", "factory.sh", *args], cwd=repo, env=env, capture_output=True, text=True, timeout=60
     )
+
+
+class TelemetryServer:
+    """A dashboard stand-in on 127.0.0.1 (ephemeral port): records every POST the client sends."""
+
+    def __init__(self) -> None:
+        self.requests: list[dict[str, object]] = []
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802
+                body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode()
+                outer.requests.append(
+                    {"path": self.path, "headers": dict(self.headers.items()), "body": body}
+                )
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def events(self) -> list[dict[str, object]]:
+        """Every event line received so far, in the order the client numbered them."""
+        rows = [
+            json.loads(line)
+            for req in list(self.requests)
+            for line in str(req["body"]).splitlines()
+            if line.strip()
+        ]
+        return sorted(rows, key=lambda row: row["seq"])
+
+    def wait_for(self, event: str, timeout: float = 15.0) -> list[dict[str, object]]:
+        """Delivery is detached and asynchronous: poll until `event` has arrived."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            rows = self.events()
+            if any(row["event"] == event for row in rows):
+                return rows
+            time.sleep(0.05)
+        raise AssertionError(f"no {event!r} event arrived; got {[r['event'] for r in self.events()]}")
+
+
+@pytest.fixture
+def telemetry_server() -> Iterator[TelemetryServer]:
+    server = TelemetryServer()
+    yield server
+    server.httpd.shutdown()
+    server.httpd.server_close()
+
+
+@pytest.fixture
+def curl_calls(tmp_path: Path, stub_env: dict[str, str]) -> Path:
+    """Puts a `curl` first on PATH that only records that it was called (and fails), so a test can
+    prove nothing tried the network. Returns the log file, which exists only once curl is called."""
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir()
+    log = tmp_path / "curl.log"
+    _executable(bin_dir / "curl", f'#!/usr/bin/env bash\necho "$*" >>"{log}"\nexit 7\n')
+    stub_env["PATH"] = f"{bin_dir}{os.pathsep}{stub_env['PATH']}"
+    return log
+
+
+def telemetry_env(env: dict[str, str], tmp_path: Path, url: str) -> dict[str, str]:
+    """env plus the telemetry settings, with the client's identity cache kept inside tmp_path."""
+    return {
+        **env,
+        "FACTORY_TELEMETRY_URL": url,
+        "FACTORY_TELEMETRY_TOKEN": "s3cret-token",
+        "FACTORY_WORKSHOP": "nov-10",
+        "FACTORY_PARTICIPANT": "ana",
+        "HOME": str(tmp_path / "home"),
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+    }

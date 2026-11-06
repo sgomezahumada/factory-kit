@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
 
+from tests.conftest import TelemetryServer, telemetry_env
 from tests.engine_helpers import commit_file, git_out
 
 FORK_URL = "https://github.com/ana/x.git"
@@ -131,3 +134,43 @@ def test_missing_conf_is_a_fix_not_a_crash(doctor_repo: Path, stub_env: dict[str
     out = doctor(doctor_repo, stub_env)
     assert out.returncode == 1
     assert line(out, "factory.conf").startswith("FIX  factory.conf")
+
+
+def test_all_green_sends_hello_only_when_telemetry_is_on(
+    doctor_repo: Path,
+    stub_env: dict[str, str],
+    tmp_path: Path,
+    telemetry_server: TelemetryServer,
+    curl_calls: Path,
+) -> None:
+    quiet = doctor(doctor_repo, stub_env)
+    assert quiet.returncode == 0
+    assert not curl_calls.exists()
+
+    # a real curl for the server test
+    stub_env["PATH"] = stub_env["PATH"].split(os.pathsep, 1)[1]
+    env = telemetry_env(stub_env, tmp_path, telemetry_server.url)
+    out = doctor(doctor_repo, env)
+    assert out.returncode == 0 and out.stdout == quiet.stdout and out.stderr == quiet.stderr
+    [hello] = [r for r in telemetry_server.wait_for("hello") if r["event"] == "hello"]
+    assert hello["participant"] == "ana" and hello["workshop"] == "nov-10"
+    headers = {str(k).lower(): v for k, v in dict(telemetry_server.requests[0]["headers"]).items()}  # type: ignore[call-overload]
+    assert headers["authorization"] == "Bearer s3cret-token"
+
+
+def test_doctor_with_fixes_sends_no_hello(
+    doctor_repo: Path, stub_env: dict[str, str], tmp_path: Path, telemetry_server: TelemetryServer
+) -> None:
+    env = telemetry_env(stub_env, tmp_path, telemetry_server.url)
+    out = doctor(doctor_repo, {**env, "STUB_GH_AUTH": "1"})
+    assert out.returncode == 1
+    time.sleep(1)
+    assert telemetry_server.requests == []
+
+
+def test_doctor_ignores_an_unreachable_endpoint(
+    doctor_repo: Path, stub_env: dict[str, str], tmp_path: Path
+) -> None:
+    quiet = doctor(doctor_repo, stub_env)
+    out = doctor(doctor_repo, telemetry_env(stub_env, tmp_path, "http://127.0.0.1:9"))
+    assert (out.returncode, out.stdout, out.stderr) == (0, quiet.stdout, quiet.stderr)
