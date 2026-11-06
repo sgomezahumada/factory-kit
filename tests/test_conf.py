@@ -123,3 +123,10 @@ def test_no_macos_only_constructs() -> None:
         text = path.read_text()
         for word in banned:
             assert word not in text, f"{path.name} uses {word!r}"
+
+
+def test_missing_conf_message_has_no_local_path(tmp_path: Path) -> None:
+    # die messages reach the room board when telemetry is on; a path would carry the user's name
+    out = sh(tmp_path, "load_conf")
+    assert "factory.conf not found" in out.stderr
+    assert str(tmp_path.resolve()) not in out.stderr and str(tmp_path) not in out.stderr

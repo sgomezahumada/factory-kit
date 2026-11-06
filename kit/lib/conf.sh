@@ -8,7 +8,7 @@ PROTECTED_DIRS=(lib gates prompts dashboard .claude .git)
 
 # load_conf: source ./factory.conf, apply defaults and FACTORY_* overrides, extend PATH.
 load_conf() {
-  [[ -f factory.conf ]] || die "factory.conf not found in $(pwd): run this from the repo root"
+  [[ -f factory.conf ]] || die "factory.conf not found here: run this from the repo root (cd into your fork)"
   TEST_CMD="" LINT_CMD="" SCOPE="" MODEL="claude-sonnet-5-5" MAX_TURNS=40 PHASE_TIMEOUT=300
   GATE_TIMEOUT=60 PATH_PREPEND="" PROTECT_EXTRA="" RUNTIME="" SETUP=""
   # shellcheck disable=SC1091

@@ -14,7 +14,8 @@ if [[ -f "${BASH_SOURCE[0]%/*}/telemetry.sh" ]]; then
   # shellcheck source=lib/telemetry.sh
   source "${BASH_SOURCE[0]%/*}/telemetry.sh"
 else
-  telemetry_emit() { :; }  # an older checkout without the client
+  telemetry_init() { :; }  # an older checkout without the client
+  telemetry_emit() { :; }
   telemetry_flush() { :; }
 fi
 
