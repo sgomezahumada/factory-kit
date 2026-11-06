@@ -125,3 +125,12 @@ def test_events_carry_upstream_verdict_and_stop_reason(kit_repo: Path, stub_env:
     assert last(kit_repo, "preflight")["upstream"] == "workshop/leaderboard-api"
     finish = last(kit_repo, "finish")
     assert (finish["verdict"], finish["stopped_by"]) == ("REJECT", "scope")
+
+
+def test_run_works_without_the_telemetry_client(kit_repo: Path, stub_env: dict[str, str]) -> None:
+    # an older checkout, or a repo synced before the client existed
+    (kit_repo / "lib" / "telemetry.sh").unlink()
+    git_out(kit_repo, stub_env, "commit", "-qam", "no telemetry client")
+    script_phases(stub_env)
+    out = run_factory(kit_repo, rehearse(stub_env), "1")
+    assert out.returncode == 0, out.stderr
